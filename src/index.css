@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import url("https://volta-explorer.energyweb.org/css/app-85f0178cadf4ecb70e8ff979b77b0086.css?vsn=d");
 
 body {
   margin: 0;

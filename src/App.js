@@ -5,107 +5,178 @@ import {
 } from "react-router-dom";
 import { useEffect, useState } from 'react';
 import {ethers} from "ethers";
+import { parse } from 'node-html-parser';
+
+const cheerio = require("cheerio");
+
 
 function App() {
   const history = useHistory();
-  const [totalTokens, setTokens] = useState(0);
-  const [transactions, setTransactions] = useState(null);
-  const [contractAddress, setContractAddress] = useState(null);
+  const [liquidityTokens, setliquidityTokens] = useState(0);
+  const [burnedTokens, setBurnedTokens] = useState(0);
   const truncate = (input, len) =>
     input.length > len ? `${input.substring(0, len)}...` + `${input.substring(input.length - len, input.length)}` : input;
+
+  const [code, setCode] = useState(null);
+
+
+  const tokenTransfer = (i, each) => {
+    if ("data-test" in each.attribs) {
+     if (([
+        "token-transfer",
+        "token_transfer"
+        // "address_hash_link",
+      ]).includes(each.attribs["data-test"])) return true;
+    }
+    return false;
+  }
+  
+  const filterAddress = (i, each) => {
+    if ("data-test" in each.attribs) {
+      if (["token_link"].includes(each.attribs["data-test"])) return true;
+    }
+
+    if ("data-address-hash" in each.attribs) return true;
+    return false;
+  }
 
   // url/TokenAddress
   useEffect(() => {
     const addr = window.location.href;
     var splitList = addr.split("=");
+    var totalBurnedTokens = 0;
+    var totalTreasuryTokens = 0;
+    
     splitList = splitList.slice(-2);
+    var addrList = splitList[1].split("/");
+    var tokenContractAddress = addrList[0];
+    var vestingContractAddress = addrList[1];
 
-    var contractAddress = splitList[1];
-    setContractAddress(contractAddress);
-    var totalTokens = 0;
 
-    fetch("https://volta-explorer.energyweb.org/api?module=account&action=tokentx&address=0x68569F86473D0A686f40E94B79FD9a1e3254b8FE", {
+    var addressToName = {
+      '0x0000000000000000000000000000000000000000': 'Burn',
+      '0x68569f86473d0a686f40e94b79fd9a1e3254b8fe': 'Treasury',
+    }
+    addressToName[tokenContractAddress.toLowerCase()] = 'Token';
+    addressToName[vestingContractAddress.toLowerCase()] = "Vesting";
+    
+    console.log(addressToName);
+
+    fetch("https://volta-explorer.energyweb.org/token/" + tokenContractAddress + "/token-transfers?type=JSON", {
       method: "GET"
     }).then(async(response) => {
       var data = await response.json();
-      data = data.result.filter(
-        function (item) {
-          if (item.contractAddress === contractAddress && item.from !== "0x0000000000000000000000000000000000000000") {
-            var date = new Date(parseInt(item.timeStamp) * 1000);
-            var blc = ethers.utils.formatUnits(item.value);
-            date = date.toUTCString();
-            item.value = blc;
-            item.timeStamp = date;
-            totalTokens += parseFloat(blc);
-            return true;
+      var output = "";
+
+      console.log(data);
+      
+      for (var eachItem in data.items) {
+        var mainData = data.items[eachItem];
+
+        // Toggle all transfer to display
+        var $ = cheerio.load(mainData, null, false);
+        $("*").find(".token-tile-view-more").remove().html();
+        var transferData = $("*").find(".token-transfer-toggle");
+
+        for(var i=0; i < transferData.length; i++) {
+          $("*").find(".token-transfer-toggle")[i]["attribs"]["class"] = "token-transfer-toggle show";
+        }
+
+        // parsing through token transfer to calculate total amounts for burn and liquidity
+        var transferMemory = []; // from, to, Amount
+
+        $("*").filter(tokenTransfer).each(function() {
+          var tokenTransferData = ($(this).html());
+          var transfer = cheerio.load(tokenTransferData, null, false);
+
+          $("*").filter(filterAddress).each((i, eachOne) => {
+            
+            // parse through token amount
+            // Token addition calcualtion WON'T be accuracte since javascript can only handle 15 decimal precision
+            // Attempting to handle 18 decimal precision causes disassociation from the actual number (18 decimal)
+            if ("data-test" in eachOne["attribs"] && eachOne["attribs"]["data-test"] == "token_link") {
+              console.log("here");
+              // find the token amount transferred ~ previous item in the <span>
+              var amountStr = eachOne["prev"]["data"];
+              amountStr = amountStr.replace(/,/g, '');
+              var amount = parseFloat(amountStr);
+              transferMemory.push(amount);
+              return;
+            }
+            
+            var mode = null;
+
+            console.log(eachOne);
+            if ("data-address-hash" in eachOne["attribs"]) {
+              // retrieve address from the HTML code
+              var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
+    
+              if (address in addressToName) {
+                mode = addressToName[address];              
+              }
+            }
+
+            transferMemory.push(mode);
+          });
+        });
+
+        console.log(transferMemory);
+        
+        // Very janky
+        // figure out the burn and treasury amounts
+        // [].length >= 3
+        // 2nd data => 3rd item amount
+        if (transferMemory.length >= 3) {
+          for(var i=2; i < transferMemory.length; i++) {
+            if (transferMemory[i-1] == "Burn") totalBurnedTokens += transferMemory[i];
+            if (transferMemory[i-1] == "Treasury") totalTreasuryTokens += transferMemory[i];
           }
         }
-      );
 
-      setTokens(totalTokens);
-      setTransactions(data);
-      console.log(data);
+        // Assign naames to addresses in the transfer list
+        $("*").filter(filterAddress).each((i, eachOne) => {      
+          if ("data-address-hash" in eachOne["attribs"]) {
+            // retrieve address from the HTML code
+            var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
+
+            if (address in addressToName) {          
+              var htmlText = eachOne["children"][0]["data"];
+              eachOne["children"][0]["data"] = htmlText + " [" + addressToName[address] + "] ";
+            }
+          }
+        });
+        mainData = $.html();
+        output += mainData;
+      }
+
+      console.log(totalBurnedTokens, totalTreasuryTokens);
+      setBurnedTokens(totalBurnedTokens);
+      setliquidityTokens(totalTreasuryTokens);
+
+      setCode(output);
+        
     });
   }, []);
 
   return (
     <div className="App">
+
       <header className="App-header">
-        <h1 className="text-xl">
-          Total: {totalTokens}
+        <h1 className="text-xl text-black">
+          Liquidity Treasury: {liquidityTokens} KNGT
           <br />
-          Contract: {contractAddress}
+          Actual Burned Amount: {burnedTokens} KNGT
+          <p> Values above are not accurate due to lack of 18 decimal precision in this Web App. Please use it only as an approximate. </p>
+
         </h1>
 
         <br />
+
+        <div className="content text-xl" dangerouslySetInnerHTML={{__html: code}}></div>
         
-        { transactions !== null? (
-        <div class="overflow-x-auto relative shadow-md sm:rounded-lg">
-          <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                <tr>
-                    <th scope="col" class="py-3 px-6">
-                      Date
-                    </th>
-                    <th scope="col" class="py-3 px-6">
-                      Amount
-                    </th>
-                    <th scope="col" class="py-3 px-6">
-                        From
-                    </th>
-                    <th scope="col" class="py-3 px-6">
-                        Treasury Address
-                    </th>
-                </tr>
-            </thead>
-            <tbody>
-                {transactions && transactions.map((each, index) => {
-                  return (
-                    <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                      <th scope="row" class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                      {each.timeStamp}
-                      </th>
-                      <td class="py-4 px-6">
-                          {each.value}
-                      </td>
-                      <td class="py-4 px-6">
-                          {truncate(each.from, 6)}
-                      </td>
-                      <td class="py-4 px-6">
-                          {truncate(each.to, 6)}
-                      </td>
-                  </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-        ) : (
-          <h1 className="text-xl font-bold">
-            Loading
-        </h1>     
-        )}
       </header>
+
+      {}
     </div>
   );
 }
