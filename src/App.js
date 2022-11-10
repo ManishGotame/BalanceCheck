@@ -18,15 +18,29 @@ function App() {
     input.length > len ? `${input.substring(0, len)}...` + `${input.substring(input.length - len, input.length)}` : input;
 
   const [code, setCode] = useState(null);
+  // 0 => All Transfers
+  // 1 => Contract Transfers
+  const [dataMode, setMode] = useState(0);
 
 
   const tokenTransfer = (i, each) => {
     if ("data-test" in each.attribs) {
-     if (([
-        "token-transfer",
-        "token_transfer"
-        // "address_hash_link",
-      ]).includes(each.attribs["data-test"])) return true;
+      // Not needed but could prevent any further bugs in the future
+      if (dataMode == 0) {
+        if (([
+          "token-transfer",
+          // "address_hash_link",
+        ]).includes(each.attribs["data-test"])) return true;
+      }
+
+      if (dataMode == 1) {
+        if (([
+          "token_transfer"
+          // "address_hash_link",
+        ]).includes(each.attribs["data-test"])) return true;
+      }
+     
+
     }
     return false;
   }
@@ -57,12 +71,17 @@ function App() {
       '0x0000000000000000000000000000000000000000': 'Burn',
       '0x68569f86473d0a686f40e94b79fd9a1e3254b8fe': 'Treasury',
     }
-    addressToName[tokenContractAddress.toLowerCase()] = 'Token';
+    addressToName[  tokenContractAddress.toLowerCase()] = 'Token';
     addressToName[vestingContractAddress.toLowerCase()] = "Vesting";
     
     console.log(addressToName);
 
-    fetch("https://volta-explorer.energyweb.org/token/" + tokenContractAddress + "/token-transfers?type=JSON", {
+    var link = null;
+
+    if (dataMode == 0) link = "https://volta-explorer.energyweb.org/token/" + tokenContractAddress + "/token-transfers?type=JSON";
+    if (dataMode == 1) link = "https://volta-explorer.energyweb.org/address/" + vestingContractAddress + "/token-transfers?type=JSON"; 
+
+    fetch(link, {
       method: "GET"
     }).then(async(response) => {
       var data = await response.json();
@@ -112,24 +131,39 @@ function App() {
               var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
     
               if (address in addressToName) {
-                mode = addressToName[address];              
+                mode = addressToName[address]; 
+                             
               }
             }
 
             transferMemory.push(mode);
+            if (dataMode == 0 && transferMemory.length >= 2 && transferMemory[transferMemory.length - 1] != null ) {
+              var to = transferMemory[transferMemory.length - 1];
+
+              if (to == "Burn") {
+                $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Burning Address </h1>');
+              }
+
+              if (to == "Treasury") {
+                $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Liquidity Treasury </h1>');
+              }
+              console.log(transferMemory);
+            }
           });
         });
-
-        console.log(transferMemory);
-        
+       
         // Very janky
         // figure out the burn and treasury amounts
         // [].length >= 3
         // 2nd data => 3rd item amount
         if (transferMemory.length >= 3) {
-          for(var i=2; i < transferMemory.length; i++) {
-            if (transferMemory[i-1] == "Burn") totalBurnedTokens += transferMemory[i];
-            if (transferMemory[i-1] == "Treasury") totalTreasuryTokens += transferMemory[i];
+          console.log(transferMemory);
+          
+          for (var i=1; i < transferMemory.length; i++) {
+            if (typeof(transferMemory[i]) == 'number') {
+              if (transferMemory[i-1] == "Burn") totalBurnedTokens += transferMemory[i];
+              if (transferMemory[i-1] == "Treasury") totalTreasuryTokens += transferMemory[i];  
+            }
           }
         }
 
@@ -142,6 +176,8 @@ function App() {
             if (address in addressToName) {          
               var htmlText = eachOne["children"][0]["data"];
               eachOne["children"][0]["data"] = htmlText + " [" + addressToName[address] + "] ";
+
+              // Add a bigger title perhaps
             }
           }
         });
@@ -156,7 +192,7 @@ function App() {
       setCode(output);
         
     });
-  }, []);
+  }, [dataMode]);
 
   return (
     <div className="App">
@@ -167,10 +203,21 @@ function App() {
           <br />
           Actual Burned Amount: {burnedTokens} KNGT
           <p> Values above are not accurate due to lack of 18 decimal precision in this Web App. Please use it only as an approximate. </p>
-
         </h1>
 
         <br />
+
+        <div class="flex justify-center flex-row">
+          <button type="button" onClick={() => setMode(0)}class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
+            All Token Payment / Transfers
+          </button>
+          <button type="button" onClick={() => setMode(1)} class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
+            Vesting Contract Transfers
+          </button>
+        </div>
+
+        <br />
+      
 
         <div className="content text-xl" dangerouslySetInnerHTML={{__html: code}}></div>
         
