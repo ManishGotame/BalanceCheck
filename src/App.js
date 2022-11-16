@@ -13,6 +13,7 @@ const cheerio = require("cheerio");
 function App() {
   const history = useHistory();
   const [liquidityTokens, setliquidityTokens] = useState(0);
+  const [onChainTreasury, setOnChainTreasuryTokens] = useState(0);
   const [burnedTokens, setBurnedTokens] = useState(0);
   const truncate = (input, len) =>
     input.length > len ? `${input.substring(0, len)}...` + `${input.substring(input.length - len, input.length)}` : input;
@@ -59,7 +60,8 @@ function App() {
     const addr = window.location.href;
     var splitList = addr.split("=");
     var totalBurnedTokens = 0;
-    var totalTreasuryTokens = 0;
+    var onChainTreasury = 0;
+    var liquidityTreasury = 0;
     
     splitList = splitList.slice(-2);
     var addrList = splitList[1].split("/");
@@ -69,7 +71,8 @@ function App() {
 
     var addressToName = {
       '0x0000000000000000000000000000000000000000': 'Burn',
-      '0x68569f86473d0a686f40e94b79fd9a1e3254b8fe': 'Treasury',
+      '0x68569f86473d0a686f40e94b79fd9a1e3254b8fe': 'On Chain Treasury',
+      '0xf9351cfab08d72e873424708a817a067fa33f45f': 'Liquidity Treasury'
     }
     addressToName[  tokenContractAddress.toLowerCase()] = 'Token';
     addressToName[vestingContractAddress.toLowerCase()] = "Vesting";
@@ -104,20 +107,23 @@ function App() {
         // parsing through token transfer to calculate total amounts for burn and liquidity
         var transferMemory = []; // from, to, Amount
 
-        $("*").filter(tokenTransfer).each(function() {
-          var tokenTransferData = ($(this).html());
-          var transfer = cheerio.load(tokenTransferData, null, false);
+        // $("*").filter(tokenTransfer).each(function() {
+        //   var tokenTransferData = ($(this).html());
+        //   var transfer = cheerio.load(tokenTransferData, null, false);
+
+        //   console.log($(this));
 
           $("*").filter(filterAddress).each((i, eachOne) => {
             
             // parse through token amount
             // Token addition calcualtion WON'T be accuracte since javascript can only handle 15 decimal precision
             // Attempting to handle 18 decimal precision causes disassociation from the actual number (18 decimal)
+
             if ("data-test" in eachOne["attribs"] && eachOne["attribs"]["data-test"] == "token_link") {
               console.log("here");
               // find the token amount transferred ~ previous item in the <span>
               var amountStr = eachOne["prev"]["data"];
-              amountStr = amountStr.replace(/,/g, '');
+              amountStr = amountStr.replace(/,/g, ''); // get rid of ,
               var amount = parseFloat(amountStr);
               transferMemory.push(amount);
               return;
@@ -125,7 +131,6 @@ function App() {
             
             var mode = null;
 
-            console.log(eachOne);
             if ("data-address-hash" in eachOne["attribs"]) {
               // retrieve address from the HTML code
               var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
@@ -135,8 +140,10 @@ function App() {
                              
               }
             }
-
+            
             transferMemory.push(mode);
+
+            // Add the title in the span 
             if (dataMode == 0 && transferMemory.length >= 2 && transferMemory[transferMemory.length - 1] != null ) {
               var to = transferMemory[transferMemory.length - 1];
 
@@ -144,14 +151,21 @@ function App() {
                 $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Burning Address </h1>');
               }
 
-              if (to == "Treasury") {
+              if (to == "On Chain Treasury") {
+                $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: On Chain Treasury </h1>');
+              }
+
+              if (to == "Liquidity Treasury") {
                 $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Liquidity Treasury </h1>');
               }
+
               console.log(transferMemory);
             }
           });
-        });
+        // });
        
+
+        console.log(transferMemory);
         // Very janky
         // figure out the burn and treasury amounts
         // [].length >= 3
@@ -162,7 +176,8 @@ function App() {
           for (var i=1; i < transferMemory.length; i++) {
             if (typeof(transferMemory[i]) == 'number') {
               if (transferMemory[i-1] == "Burn") totalBurnedTokens += transferMemory[i];
-              if (transferMemory[i-1] == "Treasury") totalTreasuryTokens += transferMemory[i];  
+              if (transferMemory[i-1] == "On Chain Treasury") onChainTreasury += transferMemory[i];
+              if (transferMemory[i-1] == "Liquidity Treasury") liquidityTreasury += transferMemory[i];  
             }
           }
         }
@@ -173,11 +188,25 @@ function App() {
             // retrieve address from the HTML code
             var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
 
+            // Extract the transaction type
+            // Token Transfer / Token Burning / Token Minting
+            var transactionTypeElement = $(".tile-transaction-type-block").find("span");
+            console.log(transactionTypeElement);
+            var transactionType = transactionTypeElement[0]["children"][0]["data"];
+            transactionType = transactionType.toString();
+            transactionType = transactionType.replace(/\n/g, '');
+            transactionType = transactionType.trim();
+
+            console.log("Transaction type:", transactionType);
+            if (transactionType === "Token Minting") {
+              // 3 parent div -- remove -- not implemented yet
+
+              var parentDiv = transactionTypeElement[0]["parent"]["parent"]["parent"];
+              // $(parentDiv).remove();
+            }
             if (address in addressToName) {          
               var htmlText = eachOne["children"][0]["data"];
               eachOne["children"][0]["data"] = htmlText + " [" + addressToName[address] + "] ";
-
-              // Add a bigger title perhaps
             }
           }
         });
@@ -185,12 +214,11 @@ function App() {
         output += mainData;
       }
 
-      console.log(totalBurnedTokens, totalTreasuryTokens);
+      console.log(totalBurnedTokens);
       setBurnedTokens(totalBurnedTokens);
-      setliquidityTokens(totalTreasuryTokens);
-
+      setOnChainTreasuryTokens(onChainTreasury);
+      setliquidityTokens(liquidityTreasury);
       setCode(output);
-        
     });
   }, [dataMode]);
 
@@ -200,6 +228,8 @@ function App() {
       <header className="App-header">
         <h1 className="text-xl text-black">
           Liquidity Treasury: {liquidityTokens} KNGT
+          <br />
+          On Chain Treasury: {onChainTreasury} KNGT
           <br />
           Actual Burned Amount: {burnedTokens} KNGT
           <p> Values above are not accurate due to lack of 18 decimal precision in this Web App. Please use it only as an approximate. </p>
