@@ -22,6 +22,7 @@ function App() {
   // 0 => All Transfers
   // 1 => Contract Transfers
   const [dataMode, setMode] = useState(0);
+  const [tokenData, setTokenData] = useState(null);
 
 
   const tokenTransfer = (i, each) => {
@@ -59,6 +60,21 @@ function App() {
   useEffect(() => {
     const addr = window.location.href;
     var splitList = addr.split("=");
+
+    var tokenData = {
+      "totalBurnedTokens": {
+        "amount": 0
+      },
+      "onChainTreasury": {
+        "amount": 0,
+        "burned": 0,
+      },
+      "liquidityTreasury": {
+        "amount": 0,
+        "burned": 0
+      }
+    }
+
     var totalBurnedTokens = 0;
     var onChainTreasury = 0;
     var liquidityTreasury = 0;
@@ -91,6 +107,7 @@ function App() {
       var output = "";
 
       console.log(data);
+      var previousDestination = null; // store i - 1 th destinationa address
       
       for (var eachItem in data.items) {
         var mainData = data.items[eachItem];
@@ -107,62 +124,54 @@ function App() {
         // parsing through token transfer to calculate total amounts for burn and liquidity
         var transferMemory = []; // from, to, Amount
 
-        // $("*").filter(tokenTransfer).each(function() {
-        //   var tokenTransferData = ($(this).html());
-        //   var transfer = cheerio.load(tokenTransferData, null, false);
+        $("*").filter(filterAddress).each((i, eachOne) => {
+          
+          // parse through token amount
+          // Token addition calcualtion WON'T be accuracte since javascript can only handle 15 decimal precision
+          // Attempting to handle 18 decimal precision causes disassociation from the actual number (18 decimal)
 
-        //   console.log($(this));
+          if ("data-test" in eachOne["attribs"] && eachOne["attribs"]["data-test"] == "token_link") {
+            console.log("here");
+            // find the token amount transferred ~ previous item in the <span>
+            var amountStr = eachOne["prev"]["data"];
+            amountStr = amountStr.replace(/,/g, ''); // get rid of ,
+            var amount = parseFloat(amountStr);
+            transferMemory.push(amount);
+            return;
+          }
+          
+          var mode = null;
 
-          $("*").filter(filterAddress).each((i, eachOne) => {
-            
-            // parse through token amount
-            // Token addition calcualtion WON'T be accuracte since javascript can only handle 15 decimal precision
-            // Attempting to handle 18 decimal precision causes disassociation from the actual number (18 decimal)
-
-            if ("data-test" in eachOne["attribs"] && eachOne["attribs"]["data-test"] == "token_link") {
-              console.log("here");
-              // find the token amount transferred ~ previous item in the <span>
-              var amountStr = eachOne["prev"]["data"];
-              amountStr = amountStr.replace(/,/g, ''); // get rid of ,
-              var amount = parseFloat(amountStr);
-              transferMemory.push(amount);
-              return;
+          if ("data-address-hash" in eachOne["attribs"]) {
+            // retrieve address from the HTML code
+            var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
+  
+            if (address in addressToName) {
+              mode = addressToName[address]; 
+                            
             }
-            
-            var mode = null;
+          }
+          
+          transferMemory.push(mode);
 
-            if ("data-address-hash" in eachOne["attribs"]) {
-              // retrieve address from the HTML code
-              var address = eachOne["attribs"]["data-address-hash"].toLocaleLowerCase();
-    
-              if (address in addressToName) {
-                mode = addressToName[address]; 
-                             
-              }
+          // Add the title in the span 
+          if (dataMode == 0 && transferMemory.length >= 2 && transferMemory[transferMemory.length - 1] != null ) {
+            var to = transferMemory[transferMemory.length - 1];
+
+            if (to == "Burn") {
+              $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Burning Address </h1>');
             }
-            
-            transferMemory.push(mode);
 
-            // Add the title in the span 
-            if (dataMode == 0 && transferMemory.length >= 2 && transferMemory[transferMemory.length - 1] != null ) {
-              var to = transferMemory[transferMemory.length - 1];
-
-              if (to == "Burn") {
-                $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Burning Address </h1>');
-              }
-
-              if (to == "On Chain Treasury") {
-                $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: On Chain Treasury </h1>');
-              }
-
-              if (to == "Liquidity Treasury") {
-                $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Liquidity Treasury </h1>');
-              }
-
-              console.log(transferMemory);
+            if (to == "On Chain Treasury") {
+              $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: On Chain Treasury </h1>');
             }
-          });
-        // });
+
+            if (to == "Liquidity Treasury") {
+              $(".tile-transaction-type-block").append('<br /><h1 className="font-500 text-xl"> To: Liquidity Treasury </h1>');
+            }
+
+          }
+        });
        
 
         console.log(transferMemory);
@@ -175,9 +184,28 @@ function App() {
           
           for (var i=1; i < transferMemory.length; i++) {
             if (typeof(transferMemory[i]) == 'number') {
-              if (transferMemory[i-1] == "Burn") totalBurnedTokens += transferMemory[i];
-              if (transferMemory[i-1] == "On Chain Treasury") onChainTreasury += transferMemory[i];
-              if (transferMemory[i-1] == "Liquidity Treasury") liquidityTreasury += transferMemory[i];  
+              
+
+              // This does not work for Vesting Contract Transfers
+              // Because the list is too populated with unnecessary data and burn data is at the top.
+              if (transferMemory[i-1] == "Burn") {
+                tokenData["totalBurnedTokens"]["amount"] += transferMemory[i];
+
+                // find out whether on Chain or Liquidity Treasury
+                // will never log the Burn data before other data
+                if (previousDestination == "On Chain Treasury") tokenData["onChainTreasury"]["burned"] += transferMemory[i];
+                if (previousDestination == "Liquidity Treasury") tokenData["liquidityTreasury"]["burned"] += transferMemory[i];
+              }
+              
+              
+              totalBurnedTokens += transferMemory[i];
+              if (transferMemory[i-1] == "On Chain Treasury") tokenData["onChainTreasury"]["amount"] += transferMemory[i];
+              if (transferMemory[i-1] == "Liquidity Treasury") tokenData["liquidityTreasury"]["amount"] += transferMemory[i];  
+
+              if (previousDestination == null) {
+                console.log(transferMemory[i-1]);
+                previousDestination = (transferMemory[i-1]? (transferMemory[i-1]) : (null));
+              }
             }
           }
         }
@@ -214,10 +242,9 @@ function App() {
         output += mainData;
       }
 
-      console.log(totalBurnedTokens);
-      setBurnedTokens(totalBurnedTokens);
-      setOnChainTreasuryTokens(onChainTreasury);
-      setliquidityTokens(liquidityTreasury);
+
+      setTokenData(tokenData);
+      console.log(tokenData);
       setCode(output);
     });
   }, [dataMode]);
@@ -227,11 +254,28 @@ function App() {
 
       <header className="App-header">
         <h1 className="text-xl text-black">
-          Liquidity Treasury: {liquidityTokens} KNGT
-          <br />
-          On Chain Treasury: {onChainTreasury} KNGT
-          <br />
-          Actual Burned Amount: {burnedTokens} KNGT
+          {dataMode == 0 && tokenData? (
+            <>
+            Liquidity Treasury: {tokenData["liquidityTreasury"]["amount"]} KNGT
+            <h4 className="text-base text-black"> Burned: {tokenData["liquidityTreasury"]["burned"]} KNGT</h4>
+            <br />
+            On Chain Treasury: {tokenData["onChainTreasury"]["amount"]} KNGT
+            <h4 className="text-base text-black"> Burned: {tokenData["onChainTreasury"]["burned"]} KNGT</h4>
+            <br />
+            Total Burned Amount: {tokenData["totalBurnedTokens"]["amount"]} KNGT
+            </>
+          ) : null } 
+          
+          {dataMode == 1 && tokenData ? (
+            <>
+            Liquidity Treasury: {tokenData["liquidityTreasury"]["amount"]} KNGT
+            <br /> <br />
+            On Chain Treasury: {tokenData["onChainTreasury"]["amount"]} KNGT
+            <br /> <br />
+            Total Burned Amount: {tokenData["totalBurnedTokens"]["amount"]} KNGT
+            </>
+          ): null}
+
           <p> Values above are not accurate due to lack of 18 decimal precision in this Web App. Please use it only as an approximate. </p>
         </h1>
 
