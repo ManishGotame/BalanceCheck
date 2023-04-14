@@ -4,6 +4,16 @@ import { useHistory, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { parse } from "node-html-parser";
+import { Spinner } from "@chakra-ui/react";
+
+import {
+  Stat,
+  StatLabel,
+  StatNumber,
+  StatHelpText,
+  StatArrow,
+  StatGroup,
+} from "@chakra-ui/react";
 
 const cheerio = require("cheerio");
 
@@ -110,6 +120,7 @@ function App() {
         vestingContractAddress +
         "/token-transfers?type=JSON";
 
+    // /token/0x24F2A99c5689501386f3E650C1cB99ec171C1494/token-transfers?block_number=22199494&index=8&items_count=50
     fetch(link, {
       method: "GET",
     }).then(async (response) => {
@@ -117,6 +128,7 @@ function App() {
       var output = "";
 
       console.log(data);
+      console.log("Size: ", data.length);
       var previousDestination = null; // store i - 1 th destinationa address
 
       for (var eachItem in data.items) {
@@ -292,39 +304,89 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1 className="text-xl text-black">
-          {dataMode == 0 && tokenData ? (
+          {dataMode == 0 ? (
             <>
-              Liquidity Treasury: {tokenData["liquidityTreasury"]["amount"]}{" "}
-              KNGT
-              <h4 className="text-base text-black">
-                {" "}
-                Burned: {tokenData["liquidityTreasury"]["burned"]} KNGT
-              </h4>
-              <br />
-              On Chain Treasury: {tokenData["onChainTreasury"]["amount"]} KNGT
-              <h4 className="text-base text-black">
-                {" "}
-                Burned: {tokenData["onChainTreasury"]["burned"]} KNGT
-              </h4>
-              <br />
-              Total Burned Amount: {
-                tokenData["totalBurnedTokens"]["amount"]
-              }{" "}
-              KNGT
+              {tokenData ? (
+                <>
+                  <StatGroup>
+                    <Stat>
+                      <a href="what" target="_blank">
+                        <b> Liquidity Program / Treasury </b>
+                      </a>
+                      <StatNumber>
+                        {tokenData["liquidityTreasury"]["amount"]} KNGT
+                      </StatNumber>
+                      <StatHelpText>
+                        {tokenData["liquidityTreasury"]["burned"]} KNGT Burned
+                      </StatHelpText>
+                    </Stat>
+                    <Stat>
+                      <a href="what" target="_blank">
+                        <b> On-chain Treasury </b>
+                      </a>
+                      <StatNumber>
+                        {tokenData["onChainTreasury"]["amount"]} KNGT
+                      </StatNumber>
+                      <StatHelpText>
+                        {tokenData["onChainTreasury"]["burned"]} KNGT burned
+                      </StatHelpText>
+                    </Stat>
+                    <Stat>
+                      <a href="what" target="_blank">
+                        <b> Overall Burned </b>
+                      </a>
+                      <StatNumber>
+                        {tokenData["totalBurnedTokens"]["amount"]} KNGT
+                      </StatNumber>
+                      {/* <StatHelpText size="xl">
+                        0xEa803653B19Ba15E447e515A1Ec4a19687201427
+                      </StatHelpText> */}
+                    </Stat>
+                  </StatGroup>
+                </>
+              ) : (
+                <Spinner />
+              )}
             </>
           ) : null}
 
-          {dataMode == 1 && tokenData ? (
+          {dataMode == 1 ? (
             <>
-              Liquidity Treasury: {tokenData["liquidityTreasury"]["amount"]}{" "}
-              KNGT
-              <br /> <br />
-              On Chain Treasury: {tokenData["onChainTreasury"]["amount"]} KNGT
-              <br /> <br />
-              Total Burned Amount: {
-                tokenData["totalBurnedTokens"]["amount"]
-              }{" "}
-              KNGT
+              {tokenData ? (
+                <>
+                  <StatGroup>
+                    <Stat>
+                      <a href="what" target="_blank">
+                        <b> Liquidity Program / Treasury </b>
+                      </a>
+                      <StatNumber>
+                        {tokenData["liquidityTreasury"]["amount"]} KNGT
+                      </StatNumber>
+                    </Stat>
+                    <Stat>
+                      <a href="what" target="_blank">
+                        <b> On-chain Treasury </b>
+                      </a>
+                      <StatNumber>
+                        {tokenData["onChainTreasury"]["amount"]} KNGT
+                      </StatNumber>
+                    </Stat>
+                    <Stat>
+                      <a href="what" target="_blank">
+                        <b> Overall Burned </b>
+                      </a>
+                      <StatNumber>
+                        {tokenData["totalBurnedTokens"]["amount"]} KNGT
+                      </StatNumber>
+                      {/* <StatHelpText size="xl">
+                        0xEa803653B19Ba15E447e515A1Ec4a19687201427
+                      </StatHelpText> */}
+                    </Stat>
+                  </StatGroup>
+                </>
+              ) : (
+                <Spinner />
+              )}
             </>
           ) : null}
 
