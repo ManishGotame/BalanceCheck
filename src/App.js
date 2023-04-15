@@ -17,6 +17,19 @@ import {
 
 const cheerio = require("cheerio");
 
+const apiBaseURI = "https://volta-explorer.energyweb.org/";
+
+const fetchLink = async (url) => {
+  var response = await fetch(url, { method: "GET" });
+  var data = await response.json();
+  if (!data?.next_page_path) return data.items;
+
+  var tokenTxnList = await fetchLink(
+    apiBaseURI + data.next_page_path + "&type=JSON"
+  );
+  return data.items.concat(tokenTxnList);
+};
+
 function App() {
   const history = useHistory();
   const [liquidityTokens, setliquidityTokens] = useState(0);
@@ -71,64 +84,63 @@ function App() {
 
   // url/TokenAddress
   useEffect(() => {
-    const addr = window.location.href;
-    var splitList = addr.split("=");
+    (async () => {
+      const addr = window.location.href;
+      var splitList = addr.split("=");
 
-    var tokenData = {
-      totalBurnedTokens: {
-        amount: 0,
-      },
-      onChainTreasury: {
-        amount: 0,
-        burned: 0,
-      },
-      liquidityTreasury: {
-        amount: 0,
-        burned: 0,
-      },
-    };
+      var tokenData = {
+        totalBurnedTokens: {
+          amount: 0,
+        },
+        onChainTreasury: {
+          amount: 0,
+          burned: 0,
+        },
+        liquidityTreasury: {
+          amount: 0,
+          burned: 0,
+        },
+      };
 
-    var totalBurnedTokens = 0;
-    var onChainTreasury = 0;
-    var liquidityTreasury = 0;
+      var totalBurnedTokens = 0;
+      var onChainTreasury = 0;
+      var liquidityTreasury = 0;
 
-    splitList = splitList.slice(-2);
-    var addrList = splitList[1].split("/");
-    var tokenContractAddress = addrList[0];
-    var vestingContractAddress = addrList[1];
+      splitList = splitList.slice(-2);
+      var addrList = splitList[1].split("/");
+      var tokenContractAddress = addrList[0];
+      var vestingContractAddress = addrList[1];
 
-    var addressToName = {
-      "0x0000000000000000000000000000000000000000": "Burn",
-      "0x68569f86473d0a686f40e94b79fd9a1e3254b8fe": "On Chain Treasury",
-      "0xf9351cfab08d72e873424708a817a067fa33f45f": "Liquidity Treasury",
-    };
-    addressToName[tokenContractAddress.toLowerCase()] = "Token";
-    addressToName[vestingContractAddress.toLowerCase()] = "Vesting";
+      var addressToName = {
+        "0x0000000000000000000000000000000000000000": "Burn",
+        "0x68569f86473d0a686f40e94b79fd9a1e3254b8fe": "On Chain Treasury",
+        "0xf9351cfab08d72e873424708a817a067fa33f45f": "Liquidity Treasury",
+      };
+      addressToName[tokenContractAddress.toLowerCase()] = "Token";
+      addressToName[vestingContractAddress.toLowerCase()] = "Vesting";
 
-    console.log(addressToName);
+      console.log(addressToName);
 
-    var link = null;
+      var link = null;
 
-    if (dataMode == 0)
-      link =
-        "https://volta-explorer.energyweb.org/token/" +
-        tokenContractAddress +
-        "/token-transfers?type=JSON";
-    if (dataMode == 1)
-      link =
-        "https://volta-explorer.energyweb.org/address/" +
-        vestingContractAddress +
-        "/token-transfers?type=JSON";
+      if (dataMode == 0)
+        link =
+          "https://volta-explorer.energyweb.org/token/" +
+          tokenContractAddress +
+          "/token-transfers?type=JSON";
+      if (dataMode == 1)
+        link =
+          "https://volta-explorer.energyweb.org/address/" +
+          vestingContractAddress +
+          "/token-transfers?type=JSON";
 
-    // /token/0x24F2A99c5689501386f3E650C1cB99ec171C1494/token-transfers?block_number=22199494&index=8&items_count=50
-    fetch(link, {
-      method: "GET",
-    }).then(async (response) => {
-      var data = await response.json();
+      const response = await fetchLink(link);
+      var data = { items: response };
       var output = "";
 
       console.log(data);
       console.log("Size: ", data.length);
+
       var previousDestination = null; // store i - 1 th destinationa address
 
       for (var eachItem in data.items) {
@@ -297,7 +309,7 @@ function App() {
       setTokenData(tokenData);
       console.log(tokenData);
       setCode(output);
-    });
+    })();
   }, [dataMode]);
 
   return (
